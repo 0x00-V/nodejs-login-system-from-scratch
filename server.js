@@ -22,9 +22,6 @@ await client.connect();
 const hostname = '127.0.0.1';
 const port = 8080;
 
-// Temporary Solution To Storing User Sessions
-const sessions = {};
-
 
 function parseCookies(cookieHeader)
 {
@@ -42,7 +39,7 @@ function generateSessionId()
 	return crypto.randomBytes(16).toString('hex');
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
 	const cookies = parseCookies(req.headers.cookie);
 
 const url = req.url;
@@ -74,8 +71,8 @@ if(req.url === '/login' && req.method === 'GET')
 	{
 		console.log('Correct.');
 		const sessionId = generateSessionId();
-		sessions[sessionId] = {userId: q1_resp.rows[0].id, username: q1_resp.rows[0].username};
-		res.setHeader('Set-Cookie', `sessionId=${sessionId}; HttpOnly`);
+		await client.query("INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1, $2, NOW() + interval '1 hour')", [sessionId, q1_resp.rows[0].id]);
+		res.setHeader('Set-Cookie', `sessionId=${sessionId}; HttpOnly; Secure; SameSite=Strict`);
 		res.writeHead(302, { Location: '/dashboard'});
 		res.end();
 	} else 
@@ -86,14 +83,20 @@ if(req.url === '/login' && req.method === 'GET')
 	});
 } else if (req.url === '/logout')
 {
-	delete sessions[cookies.sessionId];
+	await client.query("DELETE FROM sessions WHERE session_id = $1", [cookies.sessionId]);
+
 	res.writeHead(302, { Location: '/'});
 	res.end(); 
 } else if (req.url === '/dashboard')
 {
-	const session = sessions[cookies.sessionId];
-	if(session)
+	const sessionResp = await client.query(
+  "SELECT users.username FROM sessions JOIN users ON sessions.user_id = users.id WHERE sessions.session_id = $1 AND (sessions.expires_at IS NULL OR sessions.expires_at > NOW())",
+  [cookies.sessionId]
+);
+	
+	if(sessionResp.rows.length > 0)
 	{
+		const session = sessionResp.rows[0];
 		readFile('./dashboard.html', 'utf8', (err, html) => {
 			if(err)
 			{
