@@ -9,11 +9,11 @@ dotenv.config();
 import { Client } from 'pg';
 
 const client = new Client({
-	user: 'dan',
+	user: 'testing',
 	password: process.env.DB_PASS,
 	host: '127.0.0.1',
 	port: 5432,
-	database: 'testdb',
+	database: 'testing',
 });
 
 
